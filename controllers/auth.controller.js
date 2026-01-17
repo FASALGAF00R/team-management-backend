@@ -64,7 +64,7 @@ export const register = async (req, res) => {
 export const login = async (req, res) => {
   const { email, password } = req.body;
 
-  // Find user + password
+  // Find user + password + populate the role reference inside roles array
   const user = await User.findOne({ email }).select("+password").populate("roles.role");
   if (!user) {
     return res.status(401).json({ message: "Invalid credentials" });
@@ -80,24 +80,27 @@ export const login = async (req, res) => {
     return res.status(401).json({ message: "Invalid credentials" });
   }
 
+  // Get the first active (non-revoked) role from the roles array
+  const activeRole = user.roles.find(r => !r.revoked && r.role);
+  const roleData = activeRole?.role; // This is the populated Role document
+
   // Generate token
   const token = jwt.sign(
     {
       userId: user._id,
-      roleId: user.roles._id,
+      roleId: roleData?._id || null,
     },
     process.env.JWT_SECRET,
-    { expiresIn: "1d" }
+    { expiresIn: "10d" }
   );
 
   await auditLogger({
-  userId: user._id,
-  action: "LOGIN",
-  entity: "User",
-  entityId: user._id,
-  ipAddress: req.ip,
-});
-
+    userId: user._id,
+    action: "LOGIN",
+    entity: "User",
+    entityId: user._id,
+    ipAddress: req.ip,
+  });
 
   res.json({
     success: true,
@@ -106,8 +109,11 @@ export const login = async (req, res) => {
       id: user._id,
       name: user.name,
       email: user.email,
-      role: user.roles.name,
-      permissions: user.roles.permissions,
+      role: {
+        id: roleData?._id,
+        name: roleData?.name || null,
+        permissions: roleData?.permissions || [],
+      },
     },
   });
 };

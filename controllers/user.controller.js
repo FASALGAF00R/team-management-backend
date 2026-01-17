@@ -104,34 +104,34 @@ export const createUser = async (req, res) => {
 
 export const getUsers = async (req, res) => {
   try {
+    let query = {};
+    
+    // Use the scope from authorize middleware (set in req.permissionScope)
+    const scope = req.permissionScope || 'self';
+    
+    if (scope === 'global') {
+      // Global scope → no filter, can see all users
+      query = {};
+    } else if (scope === 'team') {
+      // Team scope → filter by user's team
+      if (req.user.team) {
+        query.team = req.user.team._id || req.user.team;
+      } else {
+        // User has no team, can only see themselves
+        query._id = req.user._id;
+      }
+    } else {
+      // Self scope → filter only own user
+      query._id = req.user._id;
+    }
 
-  let query = {};
+    console.log('User scope:', scope, 'Query:', query);
 
-// Check if user has a "user.read" permission
-const permissions = req.user.roles.flatMap(r => r.role.permissions);
-
-if (permissions.some(p => p.key === "user.read" && p.scope === "global")) {
-  // Global scope → no filter, can see all users
-  query = {};
-} else if (permissions.some(p => p.key === "user.read" && p.scope === "team")) {
-  // Team scope → filter by team
-  query.team = req.user.team?._id;
-} else if (permissions.some(p => p.key === "user.read" && p.scope === "self")) {
-  // Self scope → filter only own user
-  query._id = req.user._id;
-}
-
-
-// Fetch users
-const users = await User.find(query)
-  .populate("roles.role")
-  .populate("team", "name")
-  .select("-password");
-
-    // const users = await User.find()
-    //   .populate("roles.role")
-    //   .populate("team", "name")
-    //   .select("-password");
+    // Fetch users
+    const users = await User.find(query)
+      .populate("roles.role")
+      .populate("team", "name")
+      .select("-password");
 
     res.json({ success: true, users });
   } catch (error) {
@@ -233,3 +233,48 @@ export const updateUser = async (req, res) => {
   }
 };
 
+/**
+ * Delete User (Admin Only)
+ */
+export const deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Prevent self-deletion
+    if (userId === req.user._id.toString()) {
+      return res.status(400).json({ 
+        message: "You cannot delete your own account" 
+      });
+    }
+
+    // Find and delete user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // If user belongs to a team, decrement team members count
+    if (user.team) {
+      const team = await Team.findById(user.team);
+      if (team) {
+        team.membersCount = Math.max(0, team.membersCount - 1);
+        await team.save();
+      }
+    }
+
+    await User.findByIdAndDelete(userId);
+
+    await auditLogger({
+      userId: req.user._id,
+      action: "DELETE",
+      entity: "User",
+      entityId: userId,
+      ipAddress: req.ip,
+    });
+
+    res.json({ success: true, message: "User deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};

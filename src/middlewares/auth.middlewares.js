@@ -16,7 +16,7 @@ const authMiddleware = async (req, res, next) => {
 
     const user = await User.findById(decoded.userId)
       .populate("roles.role")
-      // .populate("team")
+      .populate("team")
       .select("-password");
 
       console.log(user,"user");

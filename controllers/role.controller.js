@@ -6,7 +6,7 @@ import auditLogger from "../src/utils/Auditlogger.js";
  */
 export const createRole = async (req, res) => {
   try {
-    const { name, permissions, description } = req.body;
+    const { name, permissions, description, validFrom, validTill } = req.body;
 
     const existingRole = await Role.findOne({ name });
     if (existingRole) {
@@ -17,6 +17,8 @@ export const createRole = async (req, res) => {
       name,
       permissions,
       description,
+      validFrom: validFrom || new Date(),
+      validTill: validTill || null,
     });
 
      await auditLogger({
@@ -51,12 +53,27 @@ export const getRoles = async (req, res) => {
 };
 
 /**
+ * Get Public Roles (for registration form - no auth required)
+ * Returns only role names and IDs for dropdown selection
+ */
+export const getPublicRoles = async (req, res) => {
+  try {
+    const roles = await Role.find({ isActive: true })
+      .select("_id name")
+      .sort({ name: 1 });
+    res.json({ success: true, roles });
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
  * Update Role Permissions
  */
 export const updateRole = async (req, res) => {
   try {
     const { roleId } = req.params;
-    const { permissions, description } = req.body;
+    const { permissions, description, validFrom, validTill, name } = req.body;
 
     const role = await Role.findById(roleId);
     if (!role) {
@@ -65,6 +82,9 @@ export const updateRole = async (req, res) => {
 
     if (permissions) role.permissions = permissions;
     if (description !== undefined) role.description = description;
+    if (name !== undefined) role.name = name;
+    if (validFrom !== undefined) role.validFrom = validFrom;
+    if (validTill !== undefined) role.validTill = validTill;
 
     await role.save();
 

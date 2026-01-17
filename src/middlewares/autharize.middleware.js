@@ -3,11 +3,9 @@ const authorize = (requiredPermission) => {
     if (!req.user) {
       return res.status(401).json({ message: "Unauthorized" });
     }
-// Check permission validity
     const now = new Date();
     let matchedPermission = null;
 
-    // 1️ Check permissions from ACTIVE ROLES
     for (const roleAssignment of req.user.activeRoles || []) {
       const role = roleAssignment.role;
       if (!role || !role.permissions) continue;
@@ -31,7 +29,6 @@ const authorize = (requiredPermission) => {
       });
     }
  
-    // 2️ Attach scope for controller-level data filtering
     req.permissionScope = matchedPermission.scope;
 
     next();
