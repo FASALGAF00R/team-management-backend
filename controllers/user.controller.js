@@ -104,34 +104,34 @@ export const createUser = async (req, res) => {
 
 export const getUsers = async (req, res) => {
   try {
-    let query = {};
-    
-    // Use the scope from authorize middleware (set in req.permissionScope)
-    const scope = req.permissionScope || 'self';
-    
-    if (scope === 'global') {
-      // Global scope → no filter, can see all users
-      query = {};
-    } else if (scope === 'team') {
-      // Team scope → filter by user's team
-      if (req.user.team) {
-        query.team = req.user.team._id || req.user.team;
-      } else {
-        // User has no team, can only see themselves
-        query._id = req.user._id;
-      }
-    } else {
-      // Self scope → filter only own user
-      query._id = req.user._id;
-    }
 
-    console.log('User scope:', scope, 'Query:', query);
+  let query = {};
 
-    // Fetch users
-    const users = await User.find(query)
-      .populate("roles.role")
-      .populate("team", "name")
-      .select("-password");
+// Check if user has a "user.read" permission
+const permissions = req.user.roles.flatMap(r => r.role.permissions);
+
+if (permissions.some(p => p.key === "user.read" && p.scope === "global")) {
+  // Global scope → no filter, can see all users
+  query = {};
+} else if (permissions.some(p => p.key === "user.read" && p.scope === "team")) {
+  // Team scope → filter by team
+  query.team = req.user.team?._id;
+} else if (permissions.some(p => p.key === "user.read" && p.scope === "self")) {
+  // Self scope → filter only own user
+  query._id = req.user._id;
+}
+
+
+// Fetch users
+const users = await User.find(query)
+  .populate("roles.role")
+  .populate("team", "name")
+  .select("-password");
+
+    // const users = await User.find()
+    //   .populate("roles.role")
+    //   .populate("team", "name")
+    //   .select("-password");
 
     res.json({ success: true, users });
   } catch (error) {
@@ -183,6 +183,16 @@ export const updateUser = async (req, res) => {
 
     // 4️⃣ Update roles (only global scope)
     if (roleUpdates && updatePerm.scope === "global") {
+      // Prevent user from changing their own role
+      const isSelfUpdate = userId === req.user._id.toString();
+      console.log('Role update check:', { userId, reqUserId: req.user._id.toString(), isSelfUpdate });
+      
+      if (isSelfUpdate) {
+        return res.status(400).json({ 
+          message: "You cannot change your own role. Another admin must do this." 
+        });
+      }
+
       const normalizedRoles = [];
       for (const r of roleUpdates) {
         const roleDoc = await Role.findById(r.role);

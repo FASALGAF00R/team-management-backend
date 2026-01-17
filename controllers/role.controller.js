@@ -80,6 +80,17 @@ export const updateRole = async (req, res) => {
       return res.status(404).json({ message: "Role not found" });
     }
 
+    // Check if user has this role - prevent editing own role
+    const userHasThisRole = req.user.roles?.some(
+      r => r.role?._id?.toString() === roleId || r.role?.toString() === roleId
+    );
+    
+    if (userHasThisRole) {
+      return res.status(400).json({ 
+        message: "You cannot edit the role you currently have. Another admin must do this." 
+      });
+    }
+
     if (permissions) role.permissions = permissions;
     if (description !== undefined) role.description = description;
     if (name !== undefined) role.name = name;
@@ -99,11 +110,22 @@ export const updateRole = async (req, res) => {
 };
 
 /**
- * Delete Role (Optional)
+ * Delete Role
  */
 export const deleteRole = async (req, res) => {
   try {
     const { roleId } = req.params;
+
+    // Check if user has this role - prevent deleting own role
+    const userHasThisRole = req.user.roles?.some(
+      r => r.role?._id?.toString() === roleId || r.role?.toString() === roleId
+    );
+    
+    if (userHasThisRole) {
+      return res.status(400).json({ 
+        message: "You cannot delete the role you currently have. Another admin must do this." 
+      });
+    }
 
     const role = await Role.findByIdAndDelete(roleId);
     if (!role) {
